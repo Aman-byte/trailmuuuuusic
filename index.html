@@ -116,13 +116,7 @@ summary{cursor:pointer;font-size:.64rem;font-weight:700;letter-spacing:.2em;text
 .status{display:grid;grid-template-columns:minmax(150px,1fr) minmax(0,2.4fr) minmax(150px,1fr);align-items:center;gap:18px;width:100%;border-top:1px solid var(--ink);border-bottom:1px solid var(--ink);padding:8px 0}
 .st-left b{display:block;font-size:.78rem;letter-spacing:.06em;line-height:1.35}
 .st-left span{font:italic 700 .72rem var(--serif);color:var(--mut)}
-.st-right{display:flex;justify-content:flex-end}
-#batt{display:flex;align-items:center;gap:8px;font-size:.78rem;font-weight:700}
-.bt{position:relative;display:block;width:30px;height:14px;border:2px solid var(--ink);padding:1px}
 .bt::after{content:"";position:absolute;right:-6px;top:2px;width:3px;height:6px;background:var(--ink)}
-.bt i{display:block;height:100%;width:0;background:var(--ink)}
-#batt.low .bt i{background:var(--accent)}#batt.low b{color:var(--accent)}
-#batt .bolt{display:none;color:var(--accent)}#batt.chg .bolt{display:inline}
 #listen{min-width:0;display:grid;gap:5px}
 .lv-top{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:14px}
 .lv-num,.lv-time{display:flex;flex-direction:column;line-height:1;min-width:52px}
@@ -197,7 +191,6 @@ html:fullscreen .app{max-width:none}
   .lv-time{order:1;flex-direction:row;align-items:baseline;gap:6px;min-width:0}
   .lv-time b{font-size:.78rem}.lv-time small{display:none}
   .lv-time b::before{content:"⏱ "}
-  .st-right{order:2}
   .lv-note{order:3;flex:1 0 100%;display:none}.lv-note.bad{display:block}
   h1{font-size:2.7rem;text-align:center}
   header .row{display:grid;grid-template-columns:1fr 1fr;gap:8px;width:100%}
@@ -225,13 +218,24 @@ html:fullscreen .app{max-width:none}
   #previous{grid-column:span 3;order:1}#play-pause{grid-column:span 4;order:2}#next{grid-column:span 3;order:3}#more-btn{grid-column:span 2;order:4}
   #stop,#replay,#repeat{display:none;grid-column:span 4;order:5}
   .player.open #stop,.player.open #replay,.player.open #repeat{display:flex;align-items:center;justify-content:center}
-  #deselect-all{grid-column:1/-1}
   #opts-wrap{display:none}.player.open #opts-wrap{display:block}
   .controls #previous,.controls #next,.controls #play-pause{font-size:0}
   #previous::before{content:"⏮";font-size:1.15rem}#next::before{content:"⏭";font-size:1.15rem}
   #play-pause::before{content:"▶";font-size:1.4rem;margin:0}body.playing #play-pause::before{content:"⏸"}
   .error{margin-top:4px}
 }
+
+/* ---- v6: no sideways scroll, controls above the list ---- */
+.app,.app>*,main,header,.card,.status,.row{min-width:0;max-width:100%}
+.song-item span,.playlist-song span,.playlist-header strong{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.song-item,.playlist-song,.playlist-header{max-width:100%}
+.playlist-header strong{flex:1}
+#song-list,#playlist{max-width:100%;overflow-x:hidden}
+#playlist{max-height:170px}
+#current-song,.player,.controls,.opts{min-width:0;max-width:100%}
+.status{grid-template-columns:minmax(170px,auto) minmax(0,1fr)}
+@media(min-width:900px){#song-list{max-height:clamp(220px,calc(100vh - 500px),720px)}}
+@media(max-width:899px){html,body{max-width:100%;overflow-x:hidden}}
 </style>
 </head>
 <body>
@@ -243,7 +247,6 @@ html:fullscreen .app{max-width:none}
       <div class="lv-time"><b id="lv-time">00:00:00</b><small>listened</small></div>
       <div class="lv-note" id="lv-note">Listening time starts when you press play.</div>
     </div>
-    <div class="st-right"><div id="batt"><span class="bt"><i id="batt-fill"></i></span><b id="batt-pct">--</b><span class="bolt">⚡</span></div></div>
   </div>
   <h1>Vibe<em>Vault</em></h1>
   <div class="cover-lines"><span>10-band equalizer</span><span>Gapless &amp; crossfade</span><span>Smart search</span></div>
@@ -270,12 +273,10 @@ html:fullscreen .app{max-width:none}
     </div>
     <span class="hint" id="hint"></span>
   </div>
-  <div id="song-list"><div class="empty">Select a music folder to begin</div></div>
   <div class="row actions">
     <button id="play-all">Play All</button>
     <button id="play-selected">Play Selected</button>
     <button id="add-to-playlist" class="ghost">Add to Playlist</button>
-    <button id="select-visible" class="ghost">Select Visible</button>
     <button id="deselect-all" class="ghost">Deselect All</button>
   </div>
   <div class="row">
@@ -283,6 +284,7 @@ html:fullscreen .app{max-width:none}
     <button id="create-playlist">Create Playlist</button>
   </div>
   <div id="playlist"></div>
+  <div id="song-list"><div class="empty">Select a music folder to begin</div></div>
 </section>
 <section class="card" id="eq">
   <h2>Equalizer · <span id="eq-name">Flat</span></h2>
@@ -326,31 +328,13 @@ let audioPlayer = $('audio-player'); const songList = $('song-list'), playlist =
 const canvasCtx = $('visualizer').getContext('2d');
 
 
-/* ---------- Clock, battery, full screen ---------- */
+/* ---------- Clock and full screen ---------- */
 function tickClock() {
   const d = new Date();
   $('clock').textContent = d.getDate() + ' ' + d.toLocaleString('en-GB', { month: 'long' }) + ' ' + d.getFullYear() + ' ' +
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(/\s/g, '').toLowerCase();
 }
 tickClock(); setInterval(tickClock, 10000);
-(function battery() {
-  const na = why => { $('batt-pct').textContent = 'N/A'; $('batt-fill').style.width = '0'; $('batt').classList.remove('chg', 'low'); $('batt').title = why; };
-  if (!navigator.getBattery) return na('This browser does not share battery info with web pages (Safari and Firefox block it).');
-  navigator.getBattery().then(b => {
-    const mins = t => isFinite(t) && t > 0 ? (t >= 3600 ? Math.floor(t / 3600) + ' h ' : '') + Math.round(t % 3600 / 60) + ' min' : '';
-    const up = () => {
-      // A browser that cannot see a battery (or hides it) always reports these fixed placeholder values.
-      if (b.level === 1 && b.charging && b.chargingTime === 0 && b.dischargingTime === Infinity)
-        return na('Your browser reports a full, plugged-in battery (or hides the real level). A web page cannot read more than that.');
-      const p = Math.round(b.level * 100);
-      $('batt-pct').textContent = p + '%'; $('batt-fill').style.width = p + '%';
-      $('batt').classList.toggle('chg', b.charging); $('batt').classList.toggle('low', p <= 20 && !b.charging);
-      $('batt').title = b.charging ? 'Charging' + (mins(b.chargingTime) ? ' · full in ' + mins(b.chargingTime) : '') : 'On battery' + (mins(b.dischargingTime) ? ' · ' + mins(b.dischargingTime) + ' left' : '');
-    };
-    up(); ['levelchange', 'chargingchange', 'chargingtimechange', 'dischargingtimechange'].forEach(e => b.addEventListener(e, up));
-    setInterval(up, 15000); // some browsers fire the events late or not at all
-  }).catch(() => na('Battery info is blocked here. Open the page in its own tab and reload.'));
-})();
 const fsBtn = $('fs-btn'), fsEl = document.documentElement;
 if (!(document.fullscreenEnabled || document.webkitFullscreenEnabled)) fsBtn.style.display = 'none';
 fsBtn.addEventListener('click', async () => {
@@ -743,7 +727,6 @@ $('xf').addEventListener('input', e => { opt.xf = +e.target.value; $('xf-val').t
 
 $('play-all').addEventListener('click', () => { if (!view.length) return showError('No songs loaded'); queue = view.slice(); qi = 0; playCurrent(); });
 $('play-selected').addEventListener('click', () => { if (!sel.length) return showError('No songs selected'); queue = [...sel]; qi = 0; playCurrent(); });
-$('select-visible').addEventListener('click', () => { view.forEach(i => { if (!sel.includes(i)) sel.push(i); }); drawList(); });
 $('deselect-all').addEventListener('click', () => { sel = []; drawList(); });
 $('play-pause').addEventListener('click', () => {
   if (isPlaying) { decks.forEach(d => d.el.pause()); isPlaying = false; $('play-pause').textContent = 'Play'; }
